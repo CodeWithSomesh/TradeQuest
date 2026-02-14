@@ -44,7 +44,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 import { useDemoMode } from '@/lib/demo-context'
-import { demoCoachData, demoTradeHistory, demoPnlChartData, demoDashboardStats } from './dashboard/demo-data'
+import { demoCoachData, demoTradeHistory, demoPnlChartData, demoDashboardStats } from './demo-data'
 
 // Types matching API responses
 type Trade = {
