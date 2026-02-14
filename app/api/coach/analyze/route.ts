@@ -55,14 +55,21 @@ export async function POST(request: NextRequest) {
     // Use gemini-pro: stable model used across the project
     const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
 
-    // Prepare a concise trade summary to avoid token limits
-    const tradeSummary = trades.slice(0, 25).map((t: Record<string, unknown>) => ({
+    // Prepare trade summary including enriched data for better behavioral analysis
+    const tradeSummary = trades.slice(0, 35).map((t: Record<string, unknown>) => ({
       id: t.id,
       instrument: t.instrument,
       type: t.contractType,
       outcome: t.outcome,
       pnl: t.pnl,
+      buyPrice: t.buyPrice,
+      sellPrice: t.sellPrice,
       time: t.time,
+      sellTime: t.sellTime,
+      purchaseTime: t.purchaseTime,
+      durationSeconds: t.durationSeconds,
+      shortcode: t.shortcode,
+      raw: t.raw,
     }))
 
     // Detect potential revenge trading: trades placed quickly after losses
@@ -99,8 +106,10 @@ Look for these behavioral patterns:
 2. Overtrading (too many trades in short period)
 3. Position sizing consistency
 4. Win/loss streak behavior (does trader change behavior during streaks?)
-5. Time-of-day patterns
+5. Time-of-day patterns (use sellTime/purchaseTime when available)
 6. Instrument hopping (switching instruments erratically)
+7. Hold-time discipline: when durationSeconds is present, infer whether the trader holds to expiry vs closes early (e.g. cutting winners too soon or holding losers too long). Use only for behavioral insight, never market advice.
+8. When raw.barrier, raw.entry_spot or raw.exit_spot are present, use only for context on risk/contract type; do not give market or price advice.
 
 Return ONLY valid JSON (no markdown formatting, no code blocks) with this exact structure:
 {
