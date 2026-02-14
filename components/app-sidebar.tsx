@@ -11,6 +11,8 @@ import {
   IconReport,
   IconSettings,
   IconBrain,
+  IconLayoutDashboard,
+  IconFileTextSpark,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -25,6 +27,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { NavDocuments } from "./nav-documents"
 
 const data = {
   user: {
@@ -34,20 +37,30 @@ const data = {
   },
   navMain: [
     {
-      title: "AI Coach",
+      title: "Dashboard",
       url: "/dashboard",
+      icon: IconLayoutDashboard,
+    },
+    {
+      title: "AI Coach",
+      url: "/dashboard/coach",
       icon: IconBrain,
     },
     {
-      title: "Social Studio",
-      url: "/dashboard/social",
-      icon: IconBrandTiktok,
+      title: "Quests",
+      url: "/dashboard/quests",
+      icon: IconFileTextSpark,
     },
-    {
-      title: "Market Insights",
-      url: "/dashboard/learn",
-      icon: IconBook2,
-    },
+    // {
+    //   title: "Social Studio",
+    //   url: "/dashboard/social",
+    //   icon: IconBrandTiktok,
+    // },
+    // {
+    //   title: "Market Insights",
+    //   url: "/dashboard/learn",
+    //   icon: IconBook2,
+    // },
   ],
   navSecondary: [
     {

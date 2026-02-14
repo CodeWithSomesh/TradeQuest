@@ -7,7 +7,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useDemoMode } from "@/lib/demo-context"
 
 const titleByPath: Record<string, string> = {
-  '/dashboard': 'AI Coach Dashboard',
+  '/dashboard': 'Dashboard',
   '/dashboard/coach': 'AI Coach Dashboard',
   '/dashboard/learn': 'Market Insights',
   '/dashboard/social': 'Social Studio',
