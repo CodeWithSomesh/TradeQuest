@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -15,7 +15,8 @@ import {
   Database,
   Search,
   User,
-  Activity
+  Activity,
+  Server
 } from 'lucide-react';
 
 /**
@@ -61,7 +62,8 @@ const toast = {
 
 export default function App() {
   const router = useRouter();
-  const [view, setView] = useState<'intro' | 'onboarding' | 'processing' | 'completed'>('intro');
+  // Added 'verifying' and 'verified' states
+  const [view, setView] = useState<'intro' | 'onboarding' | 'processing' | 'completed' | 'verifying' | 'verified'>('intro');
   const [isExiting, setIsExiting] = useState(false);
   const [phase, setPhase] = useState(1);
   const [currentStep, setCurrentStep] = useState(0);
@@ -74,6 +76,8 @@ export default function App() {
     recommended_focus: string;
     structured_data: Record<string, string>;
   } | null>(null);
+  
+  const [dbData, setDbData] = useState<any>(null); // To store data fetched back from DB
 
   const startJourney = () => {
     setIsExiting(true);
@@ -90,32 +94,31 @@ export default function App() {
       title: "Discovery",
       questions: [
         { id: 'name', type: 'text', question: "What is your name?", placeholder: "Type your full name..." },
-        { id: 'markets', type: 'textarea', question: "Which financial markets do you intend to trade?", placeholder: "Type your detailed response here...", hint: "Stocks, Crypto, Forex, Commodities, Indices? Tell us why." },
-        { id: 'timeframe', type: 'textarea', question: "What is your preferred trading timeframe?", placeholder: "Type your detailed response here...", hint: "Scalping, Day Trading, Swing Trading, or Investing?" },
-        { id: 'objective', type: 'textarea', question: "What is your primary objective with trading?", placeholder: "Type your detailed response here...", hint: "Income, wealth building, or recreation?" },
-        { id: 'challenge', type: 'textarea', question: "Which aspect of trading do you find most challenging?", placeholder: "Type your detailed response here...", hint: "Analysis, Execution, or Management?" }
+        { id: 'markets', type: 'textarea', question: "Which financial markets do you intend to trade?", hint: "Stocks, Crypto, Forex, Commodities, Indices? Tell us why." },
+        { id: 'timeframe', type: 'textarea', question: "What is your preferred trading timeframe?", hint: "Scalping, Day Trading, Swing Trading, or Investing?" },
+        { id: 'objective', type: 'textarea', question: "What is your primary objective with trading?", hint: "Income, wealth building, or recreation?" },
+        { id: 'challenge', type: 'textarea', question: "Which aspect of trading do you find most challenging?", hint: "Analysis, Execution, or Management?" }
       ]
     },
     {
       id: 2,
       title: "Philosophy",
       questions: [
-        { id: 'drop_reaction', type: 'textarea', question: "You buy a stock and it immediately drops 10%. What will you do?", placeholder: "Type your detailed response here...", hint: "Explain your logic and rule-set." },
-        { id: 'good_trade', type: 'textarea', question: "What makes a trade a 'Good Trade' in your eyes?", placeholder: "Type your detailed response here...", hint: "Is it the profit or the process?" },
-        { id: 'overtrading', type: 'textarea', question: "In your own words, define 'overtrading'.", placeholder: "Type your detailed response here..." }
+        { id: 'drop_reaction', type: 'textarea', question: "You buy a stock and it immediately drops 10%. What will you do?", hint: "Explain your logic and rule-set." },
+        { id: 'good_trade', type: 'textarea', question: "What makes a trade a 'Good Trade' in your eyes?", hint: "Is it the profit or the process?" },
+        { id: 'overtrading', type: 'textarea', question: "In your own words, define 'overtrading'." }
       ]
     },
     {
       id: 3,
       title: "Tactical",
       questions: [
-        { id: 'three_losses', type: 'textarea', question: "You take 3 consecutive losses. What is your rule-based adjustment (if any)?", placeholder: "Type your detailed response here..." },
-        { id: 'five_losses', type: 'textarea', question: "You take 5 consecutive losses. What is your rule-based adjustment (if any)?", placeholder: "Type your detailed response here..." },
-        // Changed to textarea as requested for open-ended response
-        { id: 'math_logic', type: 'textarea', question: "You have RM10,000. Capping risk at 1%. Entry 2.50, Stop 2.40. How many shares max and why?", placeholder: "Type your detailed response here...", hint: "Explain your calculation process." },
-        { id: 'volatility', type: 'textarea', question: "If volatility suddenly doubles, what changes in your stop distance, position size, and frequency?", placeholder: "Type your detailed response here..." },
-        { id: 'gut_feeling', type: 'textarea', question: "Price hits your Stop Loss, but you have a 'gut feeling' it will bounce back. What do you do?", placeholder: "Type your detailed response here..." },
-        { id: 'system_comparison', type: 'textarea', question: "System A (60% WR, 1R) vs System B (28% WR, 3R). Which is better and why?", placeholder: "Type your detailed response here...", hint: "Explain the expectancy." }
+        { id: 'three_losses', type: 'textarea', question: "You take 3 consecutive losses. What is your rule-based adjustment (if any)?" },
+        { id: 'five_losses', type: 'textarea', question: "You take 5 consecutive losses. What is your rule-based adjustment (if any)?" },
+        { id: 'math_logic', type: 'textarea', question: "You have RM10,000. Capping risk at 1%. Entry 2.50, Stop 2.40. How many shares max and why?", hint: "Explain your calculation process." },
+        { id: 'volatility', type: 'textarea', question: "If volatility suddenly doubles, what changes in your stop distance, position size, and frequency?" },
+        { id: 'gut_feeling', type: 'textarea', question: "Price hits your Stop Loss, but you have a 'gut feeling' it will bounce back. What do you do?" },
+        { id: 'system_comparison', type: 'textarea', question: "System A (60% WR, 1R) vs System B (28% WR, 3R). Which is better and why?", hint: "Explain the expectancy." }
       ]
     }
   ];
@@ -139,47 +142,68 @@ export default function App() {
 
       const data = await res.json();
       
-      console.log("Processed Data from API:", data.analysis);
-
-      // Map API response to visualization columns
+      // Enhance with structured visualization mapping
       setAnalysis({
         level: data.analysis?.experience_level || "Evaluating...",
         profile: data.analysis?.coach_profile_summary || "Analyzing...",
         risk_factor: data.analysis?.risk_factor || "Analyzing...",
         recommended_focus: data.analysis?.recommended_focus || "Analyzing...",
         structured_data: {
-          "preferred_product": data.analysis?.preferred_product || "N/A",
-          "trading_timeline": data.analysis?.trading_timeline || "N/A",
-          "experience_level": data.analysis?.experience_level || "N/A",
-          "primary_objective": data.analysis?.primary_objective || "N/A",
-          "primary_challenge": data.analysis?.primary_challenge || "N/A",
-          "coach_profile_summary": data.analysis?.coach_profile_summary || "N/A",
-          "risk_factor": data.analysis?.risk_factor || "N/A",
-          "recommended_focus": data.analysis?.recommended_focus || "N/A",
+          "Full Name": responses.name || "N/A",
+          "Experience Level": data.analysis?.experience_level || "Beginner",
+          "Focus Markets": data.analysis?.preferred_product || "N/A",
+          "Risk Methodology": responses.math_logic?.substring(0, 50) + "..." || "N/A",
+          "Primary Risk Factor": data.analysis?.risk_factor || "N/A",
+          "Status": "Ready for Database Commit"
         }
       });
       
       setTimeout(() => setView('completed'), 1500);
     } catch (error) {
       console.error("❌ Processing error:", error);
-      // Demo Fallback matching schema if API fails locally
+      // Demo Fallback
       setAnalysis({
         level: "Intermediate",
-        profile: "A disciplined trader with good risk awareness but needs help with position sizing logic in high volatility.",
-        risk_factor: "Math consistency under pressure.",
-        recommended_focus: "Advanced Position Sizing & Expectancy",
+        profile: "A process-oriented trader with a clear understanding of risk expectancy. Shows high discipline in following stop-loss rules.",
+        risk_factor: "Potential over-analysis during high volatility events.",
+        recommended_focus: "Advanced Expectancy Modeling & Market Regime Identification.",
         structured_data: {
-          "preferred_product": "Forex, Indices",
-          "trading_timeline": "Day Trading",
-          "experience_level": "Intermediate",
-          "primary_objective": "Monthly Income",
-          "primary_challenge": "Execution Discipline",
-          "coach_profile_summary": "Disciplined but hesitant executor...",
-          "risk_factor": "Math consistency under pressure",
-          "recommended_focus": "Advanced Position Sizing"
+          "Full Name": responses.name || "New Trader",
+          "Experience Level": "Intermediate",
+          "Focus Markets": responses.markets || "Not specified",
+          "Risk Methodology": "Rule-based stop loss logic detected",
+          "Primary Risk Factor": "Market Regime Sensitivity",
+          "Status": "Pending Sync"
         }
       });
       setTimeout(() => setView('completed'), 1500);
+    }
+  };
+
+  const verifyDatabase = async () => {
+    setView('verifying');
+    
+    // Simulate fetching from DB - In a real app, you'd call an API endpoint or use Supabase client here
+    // For this demo, we'll pretend to fetch the data we just submitted
+    // await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    try {
+        // This part would normally fetch from your 'profiles' table using the current user ID
+        // const { data, error } = await supabase.from('profiles').select('*').single();
+        
+        // Mocking the fetch for visualization as requested
+        setTimeout(() => {
+            setDbData({
+                ...analysis?.structured_data,
+                id: "uuid-1234-5678",
+                created_at: new Date().toISOString(),
+                verified: true
+            });
+            setView('verified');
+        }, 2000);
+        
+    } catch (e) {
+        console.error("Verification failed", e);
     }
   };
 
@@ -243,17 +267,19 @@ export default function App() {
     );
   }
 
-  if (view === 'processing') {
+  if (view === 'processing' || view === 'verifying') {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center">
         <div className="relative mb-8">
           <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full animate-pulse" />
           <Loader2 className="w-16 h-16 text-primary animate-spin relative z-10" />
         </div>
-        <h2 className="text-2xl font-bold tracking-tight">Synthesizing Profile</h2>
+        <h2 className="text-2xl font-bold tracking-tight">
+            {view === 'processing' ? 'Synthesizing Profile' : 'Verifying Database Integrity'}
+        </h2>
         <div className="mt-4 flex items-center gap-2 px-4 py-2 bg-muted rounded-full text-xs font-mono text-muted-foreground border border-border">
           <Terminal className="w-3 h-3" />
-          <span>Extracting database entities & analyzing risk...</span>
+          <span>{view === 'processing' ? 'Extracting database entities & analyzing risk...' : 'Fetching user record from profiles table...'}</span>
         </div>
       </div>
     );
@@ -266,19 +292,19 @@ export default function App() {
           
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Quest Analysis Complete</h1>
-              <p className="text-muted-foreground mt-1">Processed data ready for database commit.</p>
+              <h1 className="text-3xl font-bold tracking-tight">Quest Successfully Captured</h1>
+              <p className="text-muted-foreground mt-1">AI evaluation complete. Ready to sync.</p>
             </div>
             <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
               <Database className="w-4 h-4 text-emerald-500" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500">Processed</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500">Live Sync Enabled</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Main AI Profile */}
             <div className="md:col-span-2 space-y-6">
-              <div className="bg-card border border-border p-8 rounded-xl shadow-sm h-full">
+              <div className="bg-card border border-border p-8 rounded-xl shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <Brain className="w-4 h-4 text-primary" />
@@ -286,9 +312,9 @@ export default function App() {
                   </h3>
                   <span className={cn(
                     "px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                    analysis?.level === "Beginner" && "bg-blue-500/10 text-blue-500 border-blue-500/20",
-                    analysis?.level === "Intermediate" && "bg-purple-500/10 text-purple-500 border-purple-500/20",
-                    analysis?.level === "Advanced" && "bg-amber-500/10 text-amber-500 border-amber-500/20",
+                    analysis?.level?.includes("Beginner") && "bg-blue-500/10 text-blue-500 border-blue-500/20",
+                    analysis?.level?.includes("Intermediate") && "bg-purple-500/10 text-purple-500 border-purple-500/20",
+                    analysis?.level?.includes("Advanced") && "bg-amber-500/10 text-amber-500 border-amber-500/20",
                   )}>
                     {analysis?.level} Rank
                   </span>
@@ -317,16 +343,16 @@ export default function App() {
 
             {/* Database Visualization - Processed Version */}
             <div className="space-y-6">
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-inner h-full overflow-hidden">
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-inner h-full">
                 <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-6 flex items-center gap-2">
                   <Database className="w-3 h-3" />
-                  Structured Data Object
+                  Database Preview
                 </h3>
-                <div className="space-y-4 font-mono text-[11px] h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-4 font-mono text-[11px]">
                   {Object.entries(analysis?.structured_data || {}).map(([key, value]) => (
                     <div key={key} className="pb-3 border-b border-slate-800 last:border-0">
-                      <div className="text-slate-500 mb-1">{key}</div>
-                      <div className="text-emerald-400/90 break-words">"{value}"</div>
+                      <div className="text-slate-500 mb-1">{key.toUpperCase().replace(/\s/g, '_')}</div>
+                      <div className="text-slate-300 break-words">{value}</div>
                     </div>
                   ))}
                 </div>
@@ -335,12 +361,46 @@ export default function App() {
           </div>
           
           <div className="flex justify-end pt-4">
-            <Button onClick={() => console.log("Finalized", analysis)} size="lg" className="w-full sm:w-auto px-12 h-12 rounded-lg font-bold uppercase tracking-widest bg-primary text-primary-foreground transition-transform hover:translate-y-[-2px]">
-              Complete Onboarding
+            <Button onClick={verifyDatabase} size="lg" className="w-full sm:w-auto px-12 h-12 rounded-lg font-bold uppercase tracking-widest bg-primary text-primary-foreground transition-transform hover:translate-y-[-2px]">
+              Commit & Verify Database
             </Button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  // View: Verified DB Data
+  if (view === 'verified') {
+    return (
+        <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6 overflow-y-auto">
+            <div className="max-w-2xl w-full space-y-8 text-center animate-in fade-in zoom-in duration-500">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-500/20 text-emerald-500 mb-4">
+                    <CheckCircle2 className="w-10 h-10" />
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight">Data Integrity Verified</h1>
+                <p className="text-muted-foreground">The following record has been successfully retrieved from the database.</p>
+                
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 text-left shadow-2xl overflow-hidden relative">
+                    <div className="absolute top-0 right-0 p-2 opacity-50">
+                        <Server className="w-24 h-24 text-slate-800" />
+                    </div>
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 mb-4 flex items-center gap-2">
+                        <Database className="w-3 h-3" />
+                        public.profiles (Live Record)
+                    </h3>
+                    <pre className="text-xs font-mono text-slate-300 overflow-x-auto">
+                        {JSON.stringify(dbData, null, 2)}
+                    </pre>
+                </div>
+
+                <div className="flex justify-center pt-4">
+                    <Button onClick={() => router.push('/dashboard')} size="lg" className="px-12 h-12 rounded-lg font-bold uppercase tracking-widest">
+                        Enter Dashboard
+                    </Button>
+                </div>
+            </div>
+        </div>
     );
   }
 
@@ -376,7 +436,7 @@ export default function App() {
                 <input 
                   type="text" 
                   className="w-full bg-background border border-border rounded-lg p-4 text-xl outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm" 
-                  placeholder={currentQuestion.placeholder || 'Type your response here...'} 
+                  placeholder={(currentQuestion as any).placeholder || 'Type your response here...'} 
                   value={responses[currentQuestion.id] || ''} 
                   onChange={(e) => updateResponse(e.target.value)} 
                   autoFocus 

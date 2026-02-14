@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -10,11 +12,10 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    // For demo purposes, we might not have the key, so we can mock if needed, 
-    // but assuming you have it set up or want to see the real flow:
+    
+    // Resilience: Fallback to Demo Data if API Key is missing
     if (!apiKey) {
       console.warn("GEMINI_API_KEY not found. Returning mock data for demo.");
-      // Mock data for testing without API key
       const mockData = {
         preferred_product: "Forex, Crypto",
         trading_timeline: "Day Trading",
@@ -24,9 +25,13 @@ export async function POST(req: Request) {
         coach_profile_summary: "User shows understanding of risk but struggles with emotional execution.",
         risk_factor: "Emotional decision making",
         recommended_focus: "Psychology and automated execution rules",
-        raw_onboarding_responses: responses
       };
-      return NextResponse.json({ success: true, analysis: mockData });
+      
+      return NextResponse.json({ 
+        success: true, 
+        analysis: { ...mockData, raw_onboarding_responses: responses },
+        userId: "demo-user-id" // Mock ID for demo
+      });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -69,26 +74,110 @@ export async function POST(req: Request) {
     const result = await model.generateContent(prompt);
     const responseText = result.response.text().replace(/```json|```/g, "").trim();
     
-    let data;
+    let analysis;
     try {
-        data = JSON.parse(responseText);
+        // Robust JSON extraction
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON found");
+        analysis = JSON.parse(jsonMatch[0]);
     } catch (e) {
         console.error("Failed to parse Gemini response", responseText);
         return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
     }
 
-    // Database insertion skipped as per instruction.
-    // We are just returning the processed data.
-    
-    // Append raw responses for complete record visualization
+    // --- Database Insertion Logic ---
+    // Try to create an auth-aware server client first (binds cookies)
+    let supabase: any = null;
+    try {
+      supabase = await createServerClient();
+    } catch (e) {
+      console.warn('createServerClient failed, will attempt fallback client', e);
+    }
+
+    // Fallback: create a server-side client using server env keys (service role or anon)
+    if (!supabase) {
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        console.error('Missing Supabase environment variables for fallback client');
+        return NextResponse.json({ error: 'Supabase env vars missing' }, { status: 500 });
+      }
+      supabase = createSupabaseClient(supabaseUrl, supabaseKey);
+    }
+
+    // Attempt to get current user (may not work with service role fallback)
+    let userId = 'anonymous';
+    try {
+      const maybeUser = await supabase.auth.getUser();
+      if (maybeUser?.data?.user) {
+        userId = maybeUser.data.user.id;
+      }
+    } catch (e) {
+      console.warn('supabase.auth.getUser() failed; proceeding without authenticated user', e);
+    }
+
+    // If user is authenticated, upsert into profiles. Otherwise insert into onboarding_responses table.
+    try {
+      if (userId !== 'anonymous') {
+        const { error } = await supabase
+          .from('profiles')
+          .upsert({
+            id: userId,
+            full_name: responses.name || null,
+            preferred_product: analysis.preferred_product,
+            trading_timeline: analysis.trading_timeline,
+            experience_level: analysis.experience_level,
+            primary_objective: analysis.primary_objective,
+            primary_challenge: analysis.primary_challenge,
+            coach_profile_summary: analysis.coach_profile_summary,
+            risk_factor: analysis.risk_factor,
+            recommended_focus: analysis.recommended_focus,
+            raw_onboarding_responses: responses,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) {
+          console.error('Supabase upsert error:', error);
+        }
+      } else {
+        // anonymous: write a record to onboarding_responses so data is persisted
+        const { data: insertData, error: insertError } = await supabase
+          .from('onboarding_responses')
+          .insert([{ 
+            user_id: null,
+            full_name: responses.name || null,
+            preferred_product: analysis.preferred_product,
+            trading_timeline: analysis.trading_timeline,
+            experience_level: analysis.experience_level,
+            primary_objective: analysis.primary_objective,
+            primary_challenge: analysis.primary_challenge,
+            coach_profile_summary: analysis.coach_profile_summary,
+            risk_factor: analysis.risk_factor,
+            recommended_focus: analysis.recommended_focus,
+            raw_onboarding_responses: responses,
+            created_at: new Date().toISOString(),
+          }]);
+
+        if (insertError) {
+          console.error('Supabase insert error (anonymous):', insertError);
+        } else {
+          // If insert returns an id-like reference, try to attach it
+          if (insertData && Array.isArray(insertData) && insertData[0]?.id) {
+            userId = `anon:${insertData[0].id}`;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error writing onboarding data to Supabase:', e);
+    }
+
+    // Append raw responses for complete record visualization in frontend
     const finalPayload = {
-        ...data,
+        ...analysis,
         raw_onboarding_responses: responses
     };
 
-    console.log("Processed Data for Database:", finalPayload);
-
-    return NextResponse.json({ success: true, analysis: finalPayload });
+    return NextResponse.json({ success: true, analysis: finalPayload, userId });
 
   } catch (error) {
     console.error("Onboarding processing error:", error);
