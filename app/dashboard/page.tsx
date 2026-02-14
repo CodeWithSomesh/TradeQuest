@@ -44,9 +44,11 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 import { useDemoMode } from '@/lib/demo-context'
+import { getDerivToken, setDerivToken } from '@/lib/deriv-token'
 import { demoCoachData, demoTradeHistory, demoPnlChartData, demoDashboardStats } from './demo-data'
+import { Input } from '@/components/ui/input'
 
-// Types matching API responses
+// Types matching API responses (from Deriv WebSocket API via /api/deriv/trades)
 type Trade = {
   id: number
   instrument: string
@@ -57,6 +59,12 @@ type Trade = {
   sellPrice?: number
   time: string
   longcode?: string
+  sellTime?: number
+  purchaseTime?: number
+  durationSeconds?: number
+  shortcode?: string
+  contractId?: string
+  raw?: Record<string, unknown>
 }
 
 type Stats = {
@@ -133,6 +141,17 @@ export default function AICoachDashboard() {
   const [loadingTrades, setLoadingTrades] = React.useState(false)
   const [loadingAI, setLoadingAI] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [tokenInput, setTokenInput] = React.useState('')
+  const [tokenMasked, setTokenMasked] = React.useState(true)
+
+  React.useEffect(() => {
+    setTokenInput(getDerivToken() || '')
+  }, [])
+
+  const saveToken = React.useCallback(() => {
+    const t = tokenInput.trim()
+    if (t) setDerivToken(t)
+  }, [tokenInput])
 
   // Fetch real trades from Deriv API
   const fetchTrades = React.useCallback(async () => {
@@ -140,9 +159,12 @@ export default function AICoachDashboard() {
     setLoadingTrades(true)
     setError(null)
     try {
-      const res = await fetch('/api/deriv/trades')
+      const derivToken = getDerivToken()
+      const headers: HeadersInit = {}
+      if (derivToken) headers['X-Deriv-Token'] = derivToken
+      const res = await fetch('/api/deriv/trades', { headers })
       if (!res.ok) {
-        const err = await res.json()
+        const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Failed to fetch trades')
       }
       const data = await res.json()
@@ -285,6 +307,44 @@ export default function AICoachDashboard() {
                 </span>
               </div>
             </div>
+
+            {/* Right: Deriv API token input - IMPROVED DESIGN */}
+            {!showDemoData && (
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <label htmlFor="dashboard-deriv-token" className="text-sm font-semibold text-muted-foreground/60 uppercase tracking-widest">
+                  Deriv API Token
+                </label>
+                <div className="relative group">
+                  <Input
+                    id="dashboard-deriv-token"
+                    type={tokenMasked ? 'password' : 'text'}
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    onBlur={saveToken}
+                    onKeyDown={(e) => e.key === 'Enter' && (saveToken(), (e.target as HTMLInputElement).blur())}
+                    placeholder="Paste your token here"
+                    autoComplete="off"
+                    className="h-14 w-[330px] border border-white/10 bg-white/[0.03] px-3 text-lg text-white/90 placeholder:text-muted-foreground/40 focus:border-[#FF444F]/50 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#FF444F]/20 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setTokenMasked((m) => !m)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-md font-medium text-muted-foreground/60 hover:text-[#FF444F] transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10"
+                    aria-label={tokenMasked ? 'Show token' : 'Hide token'}
+                  >
+                    {tokenMasked ? 'Show' : 'Hide'}
+                  </button>
+                </div>
+                <a 
+                  href="https://app.deriv.com/account/api-token" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text- text-[#FF444F]/70 hover:text-[#FF444F] hover:underline transition-colors"
+                >
+                  Get Token →
+                </a>
+              </div>
+            )}
           </div>
         </div>
 
@@ -293,7 +353,7 @@ export default function AICoachDashboard() {
           <div className="mx-4 lg:mx-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-400">
             <p className="font-medium">Could not fetch live data</p>
             <p className="text-xs mt-1 text-amber-400/70">{error}</p>
-            <p className="text-xs mt-1 text-muted-foreground">Enable Demo Data to see the dashboard potential, or check your DERIV_API_TOKEN in .env.local</p>
+            <p className="text-xs mt-1 text-muted-foreground">Enter your Deriv API token in the field next to the balance above, or enable Demo Data to see the dashboard.</p>
           </div>
         )}
 
@@ -481,7 +541,9 @@ export default function AICoachDashboard() {
                 <IconShield className="size-4 text-[#FF444F]" />
                 AI Behavioral Insights
               </CardTitle>
-              <CardDescription>Real-time pattern detection by Gemini</CardDescription>
+              <CardDescription>
+                Pattern detection from your Deriv trade data (instrument, type, P&L, timestamps, hold duration). Strong for behavior; not market advice.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {loadingAI && !aiAnalysis ? (
@@ -558,7 +620,7 @@ export default function AICoachDashboard() {
               <CardHeader>
                 <CardTitle className="text-base">Recent Trades</CardTitle>
                 <CardDescription>
-                  {showDemoData ? 'Demo trade history with AI notes' : `Last ${trades.length} trades from your Deriv account with AI coaching notes`}
+                  {showDemoData ? 'Demo trade history with AI notes' : `Last ${trades.length} trades from Deriv (profit_table + balance). Duration = hold time.`}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -570,6 +632,7 @@ export default function AICoachDashboard() {
                         <TableHead className="text-muted-foreground">Type</TableHead>
                         <TableHead className="text-muted-foreground">Outcome</TableHead>
                         <TableHead className="text-muted-foreground text-right">P&L</TableHead>
+                        <TableHead className="text-muted-foreground">Duration</TableHead>
                         <TableHead className="text-muted-foreground">Time</TableHead>
                         <TableHead className="text-muted-foreground">AI Coach Note</TableHead>
                       </TableRow>
@@ -589,6 +652,13 @@ export default function AICoachDashboard() {
                             </TableCell>
                             <TableCell className={`text-right font-medium tabular-nums ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-[#FF444F]'}`}>
                               {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)} {currency}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm tabular-nums">
+                              {trade.durationSeconds != null
+                                ? trade.durationSeconds < 60
+                                  ? `${trade.durationSeconds}s`
+                                  : `${Math.floor(trade.durationSeconds / 60)}m`
+                                : '—'}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm">{trade.time}</TableCell>
                             <TableCell className="text-sm max-w-[220px] truncate text-muted-foreground" title={note}>
@@ -640,6 +710,18 @@ export default function AICoachDashboard() {
               </ul>
             </CardContent>
           </Card>
+        )}
+
+        {/* Honest data note: what we have and what AI can/cannot do */}
+        {!showDemoData && trades.length > 0 && (
+          <div className="mx-4 lg:mx-6 rounded-lg border border-white/10 bg-white/[0.02] p-4 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground/80 mb-1">About the data</p>
+            <p>
+              We use Deriv&apos;s WebSocket API (profit_table + balance): instrument, contract type, P&L, buy/sell price, timestamps, and hold duration.
+              This is <strong>enough for strong behavioral insights</strong> (revenge trading, overtrading, streaks, time-of-day, hold-time discipline).
+              We do <strong>not</strong> receive chart data, order book, or full market context, so the AI cannot explain why the market moved or &quot;explain the trade better than you&quot; in a market sense—only your behavior around the trade.
+            </p>
+          </div>
         )}
       </div>
     </div>

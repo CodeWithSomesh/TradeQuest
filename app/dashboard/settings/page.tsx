@@ -204,10 +204,9 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-2">
               <Label>Deriv Account Connection</Label>
-              <Button variant="outline" className="border-[#FF444F]/50 text-[#FF444F] hover:bg-[#FF444F]/10">
-                Connect Deriv Account
-              </Button>
-              <p className="text-xs text-muted-foreground">Connect to enable live trading monitoring</p>
+              <p className="text-xs text-muted-foreground">
+                Enter your Deriv API token on the <strong>Dashboard</strong> (next to the balance) to connect and enable live trade data for the AI Coach.
+              </p>
             </div>
             <div className="pt-2">
               <Button className="bg-[#FF444F] hover:bg-[#E63946] text-white">
