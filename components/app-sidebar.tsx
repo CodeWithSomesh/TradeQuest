@@ -56,11 +56,11 @@ const data = {
     //   url: "/dashboard/social",
     //   icon: IconBrandTiktok,
     // },
-    // {
-    //   title: "Market Insights",
-    //   url: "/dashboard/learn",
-    //   icon: IconBook2,
-    // },
+    {
+      title: "Market Insights",
+      url: "/dashboard/learn",
+      icon: IconBook2,
+    },
   ],
   navSecondary: [
     {
