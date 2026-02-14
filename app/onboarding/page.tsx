@@ -317,10 +317,9 @@ export default function OnboardingPage() {
                     </div>
                     <p className="text-xl text-muted-foreground font-light">{currentQuestion.text}</p>
                   </div>
-                  <input 
-                      type="number"
-                      className="w-full bg-transparent border-b border-border py-6 text-4xl md:text-6xl font-serif text-foreground placeholder:text-muted-foreground/10 outline-none focus:border-primary transition-all"
-                      placeholder="0"
+                  <textarea 
+                      className="w-full bg-transparent border-l-2 border-border pl-6 py-2 text-xl md:text-2xl text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-primary transition-all min-h-[150px] resize-none leading-relaxed font-light"
+                      placeholder="Type your answer here..."
                       value={responses[currentQuestion.id] || ''}
                       onChange={(e) => updateResponse(e.target.value)}
                       autoFocus
