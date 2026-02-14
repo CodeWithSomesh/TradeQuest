@@ -1,0 +1,189 @@
+/* DerivHub design system - Extension popup */
+:root {
+  --background: #0A0A0F;
+  --foreground: #ededed;
+  --card: #1A1A1F;
+  --card-foreground: #ededed;
+  --primary: #FF444F;
+  --primary-hover: #E63946;
+  --primary-glow: rgba(255, 68, 79, 0.2);
+  --primary-muted: rgba(255, 68, 79, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --muted-foreground: rgba(237, 237, 237, 0.7);
+  --radius: 0.625rem;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  min-width: 320px;
+  max-width: 360px;
+  min-height: 420px;
+}
+
+.popup {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--primary);
+}
+
+.logo-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.logo-accent {
+  color: var(--primary);
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--primary-muted);
+  color: var(--primary);
+  border: 1px solid rgba(255, 68, 79, 0.3);
+}
+
+/* Content */
+.content {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+/* Cards */
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--card-foreground);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: rgba(255, 68, 79, 0.4);
+  background: linear-gradient(135deg, rgba(255, 68, 79, 0.08) 0%, var(--card) 100%);
+  box-shadow: 0 0 20px var(--primary-glow);
+}
+
+.card:active {
+  transform: scale(0.98);
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.card-icon svg {
+  width: 20px;
+  height: 20px;
+  color: var(--primary);
+}
+
+.card-icon.coach svg {
+  color: var(--primary);
+}
+
+.card-icon.learn svg {
+  color: #3B82F6;
+}
+
+.card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.card-desc {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.card-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
+.card:hover .card-arrow {
+  color: var(--primary);
+  opacity: 1;
+}
+
+/* Footer */
+.footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.footer-text {
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+}

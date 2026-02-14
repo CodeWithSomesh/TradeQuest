@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Deriv's AI Coach",
+  "version": "1.0",
+  "description": "Track & Coach Trades in real time",
+  "permissions": ["tabs", "sidePanel", "storage"],
+  "host_permissions": [
+    "https://app.deriv.com/*",
+    "https://*.deriv.com/*",
+    "wss://ws.derivws.com/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*"
+  ],
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open AI Coach" },
+  "background": { "service_worker": "background.js" }
+}
