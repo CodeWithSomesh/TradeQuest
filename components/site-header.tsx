@@ -10,6 +10,7 @@ const titleByPath: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/dashboard/coach': 'AI Coach Dashboard',
   '/dashboard/learn': 'Market Insights',
+  '/dashboard/quests': 'Quests',
   '/dashboard/social': 'Social Studio',
   '/dashboard/settings': 'Settings',
 }
