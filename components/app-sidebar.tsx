@@ -39,21 +39,21 @@ const data = {
       url: "/dashboard",
       icon: IconLayoutDashboard,
     },
-    {
-      title: "AI Coach",
-      url: "/dashboard/coach",
-      icon: IconBrain,
-    },
+    // {
+    //   title: "AI Coach",
+    //   url: "/dashboard/coach",
+    //   icon: IconBrain,
+    // },
     {
       title: "Quests",
       url: "/dashboard/quests",
       icon: IconFileTextSpark,
     },
-    {
-      title: "Market Insights",
-      url: "/dashboard/learn",
-      icon: IconBook2,
-    },
+    // {
+    //   title: "Market Insights",
+    //   url: "/dashboard/learn",
+    //   icon: IconBook2,
+    // },
   ],
   navSecondary: [
     {
