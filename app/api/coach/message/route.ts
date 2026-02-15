@@ -5,12 +5,11 @@
  *
  * CRITICAL: This endpoint NEVER provides buy/sell signals or trading recommendations.
  */
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateText } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
+import { getAIModel } from '@/lib/ai-provider'
 
 export const dynamic = 'force-dynamic'
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 function corsHeaders() {
   return {
@@ -26,7 +25,8 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    const aiModel = getAIModel()
+    if (!aiModel) {
       return NextResponse.json({ message: null }, { status: 200, headers: corsHeaders() })
     }
 
@@ -45,14 +45,18 @@ export async function POST(request: NextRequest) {
       total_session_trades,
     } = body
 
-    // Use gemini-pro: stable model used across the project
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
-
     const sessionPnl = balance && session_start_balance
       ? (Number(balance) - Number(session_start_balance)).toFixed(2)
       : 'unknown'
 
-    const prompt = `You are a friendly, supportive AI trading behavioral coach embedded in a live trading platform. A trader just completed a trade. Generate a brief coaching message (1-2 sentences, max 40 words).
+    const revengeNote = is_revenge_trading ? '- ALERT: Trade placed shortly after a loss - possible revenge trading pattern! Focus on this gently but clearly.' : ''
+    const significantLossNote = Number(loss_percent) >= 10 ? '- This is a significant loss - suggest taking a break.' : ''
+    const winStreakNote = streak && Number(streak) >= 3 ? '- Acknowledge the winning streak but remind about discipline.' : ''
+    const lossStreakNote = streak && Number(streak) <= -3 ? '- The trader is on a losing streak - be empathetic and suggest a pause.' : ''
+
+    const { text } = await generateText({
+      model: aiModel.model,
+      prompt: `You are a friendly, supportive AI trading behavioral coach embedded in a live trading platform. A trader just completed a trade. Generate a brief coaching message (1-2 sentences, max 40 words).
 
 ABSOLUTE RULES:
 - NEVER provide buy/sell signals, price predictions, or trading recommendations
@@ -70,22 +74,17 @@ TRADE CONTEXT:
 - Session P&L: ${sessionPnl} ${currency || 'USD'}
 - Session stats: ${wins} wins, ${losses} losses (${total_session_trades || (wins + losses)} total trades)
 - Current streak: ${streak} (positive=winning, negative=losing)
-${is_revenge_trading ? '- ALERT: Trade placed shortly after a loss - possible revenge trading pattern!' : ''}
-${loss_percent ? `- This loss represents ${Number(loss_percent).toFixed(1)}% of session capital` : ''}
+${revengeNote}
+${significantLossNote}
+${winStreakNote}
+${lossStreakNote}
 
-${is_revenge_trading ? 'Focus on the revenge trading pattern - gently but clearly address it.' : ''}
-${Number(loss_percent) >= 10 ? 'This is a significant loss - suggest taking a break.' : ''}
-${streak && Number(streak) >= 3 ? 'Acknowledge the winning streak but remind about discipline.' : ''}
-${streak && Number(streak) <= -3 ? 'The trader is on a losing streak - be empathetic and suggest a pause.' : ''}
-
-Return ONLY the coaching message text. No JSON, no formatting, just the message.`
-
-    const result = await model.generateContent(prompt)
-    const message = result.response.text().trim()
+Return ONLY the coaching message text. No JSON, no formatting, just the message.`,
+    })
 
     // Safety: strip any accidental buy/sell language
     const forbidden = /\b(buy|sell|long|short|enter|exit)\s+(now|at|this|the|position)/gi
-    const safeMessage = message.replace(forbidden, '').trim()
+    const safeMessage = text.replace(forbidden, '').trim()
 
     return NextResponse.json({ message: safeMessage }, { headers: corsHeaders() })
   } catch (e: unknown) {

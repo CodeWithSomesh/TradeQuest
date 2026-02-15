@@ -1,32 +1,39 @@
 /**
  * POST /api/coach/analyze
- * AI-powered behavioral analysis of trading patterns using Gemini.
- * Returns discipline score, emotional state, patterns, coaching insights.
+ * AI-powered behavioral analysis of trading patterns.
+ * Returns discipline score, emotional state, patterns, and coaching insights.
  *
  * CRITICAL: This endpoint NEVER provides buy/sell signals or trading recommendations.
  * It ONLY analyzes behavioral patterns, discipline, and emotional state.
  */
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateObject } from 'ai'
+import { z } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
+import { getAIModel } from '@/lib/ai-provider'
 
 export const dynamic = 'force-dynamic'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+const CoachAnalysisSchema = z.object({
+  disciplineScore: z.number().min(0).max(100).describe('Behavioral discipline score 0-100'),
+  emotionalState: z.enum(['Stable', 'Cautious', 'Elevated', 'High Risk']),
+  revengeTradingRisk: z.enum(['Low', 'Medium', 'High']),
+  patterns: z.array(
+    z.object({
+      type: z.enum(['positive', 'warning', 'info']),
+      text: z.string().describe('Specific behavioral pattern observed — no buy/sell signals'),
+    })
+  ).describe('Behavioral patterns detected (3-6 items)'),
+  coachMessage: z.string().describe('Main coaching insight, 2-3 sentences, specific to this trader — no buy/sell signals'),
+  suggestions: z.array(z.string()).describe('3 actionable behavioral suggestions — no market advice'),
+  tradeNotes: z.record(z.string(), z.string()).describe('Brief behavioral note per noteworthy trade ID (up to 5)'),
+})
 
-export type CoachAnalysis = {
-  disciplineScore: number
-  emotionalState: string
-  revengeTradingRisk: string
-  patterns: { type: 'positive' | 'warning' | 'info'; text: string }[]
-  coachMessage: string
-  suggestions: string[]
-  tradeNotes: Record<string, string>
-}
+export type CoachAnalysis = z.infer<typeof CoachAnalysisSchema>
 
 const FALLBACK: CoachAnalysis = {
   disciplineScore: 50,
-  emotionalState: 'Unknown',
-  revengeTradingRisk: 'Unknown',
+  emotionalState: 'Stable',
+  revengeTradingRisk: 'Low',
   patterns: [],
   coachMessage: 'Connect to Deriv and trade to receive AI coaching insights.',
   suggestions: [],
@@ -35,15 +42,16 @@ const FALLBACK: CoachAnalysis = {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    const aiModel = getAIModel()
+    if (!aiModel) {
       return NextResponse.json(
-        { ...FALLBACK, coachMessage: 'GEMINI_API_KEY not configured. Add it to .env.local to enable AI coaching.' },
+        { ...FALLBACK, coachMessage: 'No AI API key configured. Add GEMINI_API_KEY or OPENAI_API_KEY to .env.local.' },
         { status: 200 }
       )
     }
 
     const body = await request.json()
-    const { trades, stats } = body
+    const { trades, stats, profile } = body
 
     if (!trades || trades.length === 0) {
       return NextResponse.json(
@@ -52,105 +60,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use gemini-pro: stable model used across the project
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
-
-    // Prepare trade summary including enriched data for better behavioral analysis
     const tradeSummary = trades.slice(0, 35).map((t: Record<string, unknown>) => ({
       id: t.id,
       instrument: t.instrument,
       type: t.contractType,
       outcome: t.outcome,
       pnl: t.pnl,
-      buyPrice: t.buyPrice,
-      sellPrice: t.sellPrice,
       time: t.time,
       sellTime: t.sellTime,
       purchaseTime: t.purchaseTime,
       durationSeconds: t.durationSeconds,
       shortcode: t.shortcode,
-      raw: t.raw,
     }))
 
     // Detect potential revenge trading: trades placed quickly after losses
-    const lossIndices = trades
+    const revengeSignals = trades
       .slice(0, 20)
       .map((t: Record<string, unknown>, i: number) => (t.outcome === 'Loss' ? i : -1))
       .filter((i: number) => i >= 0)
+      .filter((i: number) => {
+        if (i === 0) return false
+        const thisTime = Number((trades[i - 1] as Record<string, unknown>)?.sellTime) || 0
+        const lossTime = Number((trades[i] as Record<string, unknown>)?.sellTime) || 0
+        return lossTime > 0 && thisTime > 0 && (lossTime - thisTime) < 180
+      }).length
 
-    const revengeSignals = lossIndices.filter((i: number) => {
-      if (i === 0) return false
-      const thisTime = trades[i - 1]?.sellTime || 0
-      const lossTime = trades[i]?.sellTime || 0
-      return lossTime > 0 && thisTime > 0 && (lossTime - thisTime) < 180 // within 3 min
-    }).length
+    const profileContext = profile
+      ? `\nTrader Profile:\n- Name: ${profile.full_name || 'Unknown'}\n- Experience: ${profile.experience_level || 'Unknown'}\n- Trading Timeline: ${profile.trading_timeline || 'Unknown'}\n- Primary Challenge: ${profile.primary_challenge || 'Unknown'}\n- Preferred Products: ${profile.preferred_product || 'Unknown'}\n- Risk Factor: ${profile.risk_factor || 'Unknown'}\n- Recommended Focus: ${profile.recommended_focus || 'Unknown'}\n`
+      : ''
 
-    const prompt = `You are an expert AI trading behavioral coach. Your SOLE purpose is to analyze trading BEHAVIOR - patterns, discipline, emotional state, and risk management.
-
-ABSOLUTE RULES (NEVER VIOLATE):
-1. NEVER provide buy/sell signals or price predictions
-2. NEVER recommend specific instruments or trading strategies
-3. NEVER suggest entry/exit points or timing for trades
-4. ONLY analyze behavioral patterns, discipline, and emotional management
-5. Be supportive, warm, and constructive - like a good coach
-6. Keep insights actionable and specific to the trader's actual behavior
-
+    const { object } = await generateObject({
+      model: aiModel.model,
+      schema: CoachAnalysisSchema,
+      prompt: `You are an expert AI trading behavioral coach. Analyze trading BEHAVIOR only — patterns, discipline, emotional state, and risk management. NEVER provide buy/sell signals, price predictions, or market recommendations. Only behavioral insights.
+${profileContext}
 TRADING DATA:
 - Recent ${tradeSummary.length} trades: ${JSON.stringify(tradeSummary)}
 - Overall stats: ${JSON.stringify(stats)}
-- Potential revenge trading signals detected: ${revengeSignals}
+- Revenge trading signals detected: ${revengeSignals}
 
-ANALYSIS REQUIRED:
-Look for these behavioral patterns:
-1. Revenge trading (trading quickly after losses to recover)
-2. Overtrading (too many trades in short period)
-3. Position sizing consistency
-4. Win/loss streak behavior (does trader change behavior during streaks?)
-5. Time-of-day patterns (use sellTime/purchaseTime when available)
-6. Instrument hopping (switching instruments erratically)
-7. Hold-time discipline: when durationSeconds is present, infer whether the trader holds to expiry vs closes early (e.g. cutting winners too soon or holding losers too long). Use only for behavioral insight, never market advice.
-8. When raw.barrier, raw.entry_spot or raw.exit_spot are present, use only for context on risk/contract type; do not give market or price advice.
+Analyze for: revenge trading (trades quickly after losses), overtrading, win/loss streak behavior, time-of-day patterns, hold-time discipline (durationSeconds), instrument consistency. Make all insights specific to this trader's actual data. Be warm and constructive. tradeNotes keys must be the trade's numeric ID as a string.`,
+    })
 
-Return ONLY valid JSON (no markdown formatting, no code blocks) with this exact structure:
-{
-  "disciplineScore": <number 0-100>,
-  "emotionalState": "<Stable|Cautious|Elevated|High Risk>",
-  "revengeTradingRisk": "<Low|Medium|High>",
-  "patterns": [
-    {"type": "<positive|warning|info>", "text": "<specific behavioral pattern observed>"}
-  ],
-  "coachMessage": "<Main coaching insight, 2-3 sentences, specific to this trader's data>",
-  "suggestions": ["<actionable suggestion 1>", "<actionable suggestion 2>", "<actionable suggestion 3>"],
-  "tradeNotes": {"<trade_id>": "<brief behavioral note for this specific trade>"}
-}
-
-Provide tradeNotes for the 5 most noteworthy trades only. Make all insights specific to the data provided.`
-
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
-
-    let parsed: CoachAnalysis
-    try {
-      const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
-      parsed = JSON.parse(cleaned)
-    } catch {
-      parsed = {
-        ...FALLBACK,
-        coachMessage: text.slice(0, 500),
-      }
-    }
-
-    // Safety check: strip any accidental buy/sell language
-    const forbidden = /\b(buy|sell|long|short|enter|exit)\s+(now|at|this|the|position)/gi
-    if (forbidden.test(parsed.coachMessage)) {
-      parsed.coachMessage = parsed.coachMessage.replace(forbidden, '[removed]')
-    }
-    parsed.patterns = parsed.patterns.map(p => ({
-      ...p,
-      text: p.text.replace(forbidden, '[removed]'),
-    }))
-
-    return NextResponse.json(parsed)
+    return NextResponse.json(object)
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'AI analysis failed'
     console.error('[coach/analyze] error:', message)

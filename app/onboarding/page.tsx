@@ -16,6 +16,7 @@ import {
  * Replace this with `import { useRouter } from 'next/navigation'` in production.
  */
 import { useRouter } from 'next/navigation';
+import { saveProfile } from '@/lib/user-profile';
 
 const Button = ({ children, className, onClick, disabled, variant, size }: any) => {
   const variants: any = {
@@ -37,6 +38,23 @@ const Button = ({ children, className, onClick, disabled, variant, size }: any) 
 };
 
 const cn = (...inputs: any[]) => inputs.filter(Boolean).join(' ');
+
+const DEMO_ANSWERS: Record<string, string> = {
+  name: 'Alex Chen',
+  markets: 'I primarily trade Forex (EUR/USD, GBP/USD) and Crypto (Bitcoin, Ethereum). Forex because of high liquidity and 24/5 availability, crypto for the volatility and round-the-clock opportunities.',
+  timeframe: 'Day trading is my main approach. I open and close positions within the same session, usually targeting 2–3 trades per day. I occasionally swing trade Forex over 2–3 days when the setup is strong.',
+  objective: 'My primary goal is consistent monthly income to eventually replace my salary. I aim for 5–8% monthly returns while keeping drawdowns under 10%.',
+  challenge: 'Risk management and emotional discipline are my biggest struggles. I know my setups intellectually, but I often move stop losses when a trade goes against me, or I overtrade after a losing streak trying to recover quickly.',
+  drop_reaction: 'I would first check if my original thesis is still intact. If the stop loss I set before entering the trade is not hit, I hold. If I didn\'t set a stop loss before entry, I would exit immediately at market to cut the loss — that\'s a discipline failure I try to avoid repeating.',
+  good_trade: 'A good trade is one where I followed my plan — correct entry signal, pre-set stop loss, defined profit target. Whether it wins or loses is secondary. A trade I hold past my stop hoping for a reversal is a bad trade even if it eventually turns profitable.',
+  overtrading: 'Overtrading is taking positions without a clear, rule-based setup — usually driven by boredom, FOMO, or trying to recover losses. It\'s when the number of trades I place exceeds what my strategy calls for, typically after I\'ve already hit my daily trade limit.',
+  three_losses: 'After 3 consecutive losses I pause for at least 30 minutes and review each trade to see if it was a system trade or an emotional one. If all 3 followed the rules and just didn\'t work out, I continue but reduce position size by 25% for the rest of the session.',
+  five_losses: 'Five consecutive losses is my hard stop for the day. I close the platform entirely, journal all 5 trades, and do not return until the next session. This rule is non-negotiable because 5 losses in a row usually means I\'m either in the wrong market conditions or my emotions have taken over.',
+  math_logic: 'Risk amount = RM10,000 × 1% = RM100. Risk per share = 2.50 − 2.40 = RM0.10. Maximum shares = RM100 ÷ RM0.10 = 1,000 shares. I would buy a maximum of 1,000 shares. The key is that the dollar risk is fixed at RM100 regardless of the share price — position size is always derived from the stop distance.',
+  volatility: 'If volatility doubles I widen my stop distance to account for the larger price swings (otherwise I\'ll get stopped out by noise). To keep the same dollar risk, I cut my position size proportionally — roughly in half. I also reduce my trade frequency because in high volatility environments false signals increase and I prefer to wait for only the cleanest setups.',
+  gut_feeling: 'I take the stop loss. My rule is absolute: if price hits my predetermined stop, the trade is closed. A gut feeling is not a trading system. After exiting, I observe whether price bounces as I expected — if it does consistently, I investigate whether there\'s a pattern worth adding to my rules. But in the moment, the stop is always honored.',
+  system_comparison: 'System B is mathematically superior. System A expectancy: (0.60 × 1R) − (0.40 × 1R) = 0.20R per trade. System B expectancy: (0.28 × 3R) − (0.72 × 1R) = 0.84R − 0.72R = 0.12R per trade. Actually System A edges out System B here. I would choose System A for its higher expectancy and lower psychological burden — a 60% win rate means fewer consecutive losses, which makes it far easier to follow consistently without emotional breakdown.',
+};
 
 export default function App() {
   const router = useRouter();
@@ -111,23 +129,26 @@ const submitResponses = async () => {
       });
 
       const data = await res.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || "Failed to process onboarding");
       }
 
       console.group("🤖 Onboarding Processed");
       console.log("Gemini Analysis Result:", data.analysis);
-      
-      // 2. Verification: Use the specific ID returned by the API
-      const profileId = data.dbId; 
-      
-      if (!profileId) {
-          throw new Error("API reported success, but no Database ID was returned.");
+
+      // 2. Save profile to localStorage so dashboard + quests can use it
+      if (data.analysis) {
+        saveProfile(data.dbId || 'local', data.analysis, responses.name || '');
       }
 
+      const profileId = data.dbId;
 
-      // 3. Navigate to Dashboard (Only happens if verify passes)
+      if (!profileId) {
+          console.warn("No DB ID returned — profile saved to localStorage only.");
+      }
+
+      // 3. Navigate to Dashboard
       console.log("🚀 Redirecting to Dashboard...");
       router.push('/dashboard');
 
@@ -290,9 +311,17 @@ const submitResponses = async () => {
           </Button>
 
           <div className="flex items-center gap-4">
-            <Button 
-              onClick={handleNext} 
-              disabled={!isCurrentValid} 
+            <Button
+              onClick={() => setResponses(DEMO_ANSWERS)}
+              variant="ghost"
+              className="text-xs text-muted-foreground gap-1.5 border border-dashed border-border"
+            >
+              <Terminal className="w-3 h-3" />
+              Demo Auto-fill
+            </Button>
+            <Button
+              onClick={handleNext}
+              disabled={!isCurrentValid}
               className="px-8 font-bold gap-2"
             >
               {phase === 3 && currentStep === totalQuestionsInPhase - 1 ? 'Complete Evaluation' : 'Next Step'}

@@ -15,6 +15,8 @@ import {
   IconMoodSmile,
   IconTarget,
   IconWallet,
+  IconFlame,
+  IconChevronRight,
 } from '@tabler/icons-react'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
@@ -45,8 +47,39 @@ import {
 } from '@/components/ui/chart'
 import { useDemoMode } from '@/lib/demo-context'
 import { getDerivToken, setDerivToken } from '@/lib/deriv-token'
+import { getProfile, type StoredProfile } from '@/lib/user-profile'
+// import { useChallenges } from '@/lib/challenge-context'
+import { useGamification } from '@/lib/gamification-context'
 import { demoCoachData, demoTradeHistory, demoPnlChartData, demoDashboardStats } from './demo-data'
 import { Input } from '@/components/ui/input'
+import Link from 'next/link'
+
+// Quest list for recommendations
+const QUEST_CATALOG = [
+  { id: 1, title: 'Introduction to Trading', difficulty: 'beginner' },
+  { id: 2, title: 'Technical Analysis Basics', difficulty: 'beginner' },
+  { id: 3, title: 'Understanding Risk Management', difficulty: 'intermediate' },
+  { id: 4, title: 'Fundamental Analysis Deep Dive', difficulty: 'intermediate' },
+  { id: 5, title: 'Advanced Trading Strategies', difficulty: 'advanced' },
+  { id: 6, title: 'Market Psychology and Trading', difficulty: 'advanced' },
+]
+
+function getRecommendedQuestIds(profile: StoredProfile | null, aiAnalysis: { revengeTradingRisk?: string; patterns?: { type: string; text: string }[] } | null): number[] {
+  const recs: number[] = []
+  const challenge = (profile?.primary_challenge || '').toLowerCase()
+  const focus = (profile?.recommended_focus || '').toLowerCase()
+
+  if (aiAnalysis?.revengeTradingRisk === 'High') recs.push(6)    // Market Psychology
+  if (aiAnalysis?.revengeTradingRisk === 'Medium') recs.push(3)  // Risk Management
+  if (challenge.includes('discipline') || focus.includes('discipline')) recs.push(6)
+  if (challenge.includes('risk') || focus.includes('risk')) recs.push(3)
+  if (challenge.includes('analysis') || focus.includes('analysis')) recs.push(2)
+  if (challenge.includes('execution') || focus.includes('execution')) recs.push(5)
+  if (!recs.length) recs.push(1)  // Default: Introduction to Trading
+
+  // Deduplicate and return top 2
+  return [...new Set(recs)].slice(0, 2)
+}
 
 // Types matching API responses (from Deriv WebSocket API via /api/deriv/trades)
 type Trade = {
@@ -128,9 +161,119 @@ function getTradeNote(trade: Trade, aiNotes: Record<string, string> | undefined,
   }
 }
 
+/* CHALLENGES FEATURE REMOVED - Concept deprecated
+function ActiveChallengeWidget() {
+  const { activeChallenge, logTrade, generateChallenge, isGenerating } = useChallenges()
+  const { awardXP } = useGamification()
+
+  if (!activeChallenge) {
+    return (
+      <Card className="border-dashed border-white/15 mx-4 lg:mx-6">
+        <CardContent className="py-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <IconTarget className="size-7 text-white/20 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground/70">No active behavioral challenge</p>
+              <p className="text-xs text-muted-foreground">Start a challenge to gamify your discipline improvement</p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => generateChallenge()}
+              disabled={isGenerating}
+              className="gap-1.5 border-white/15 text-xs"
+            >
+              {isGenerating ? <IconLoader2 className="size-3 animate-spin" /> : <IconBrain className="size-3" />}
+              AI Pick
+            </Button>
+            <Link href="/dashboard/challenges">
+              <Button size="sm" className="gap-1.5 text-xs bg-[#FF444F] hover:bg-[#FF444F]/90 text-white">
+                View Challenges <IconChevronRight className="size-3" />
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const progressPct = Math.round((activeChallenge.progress / activeChallenge.targetTrades) * 100)
+  const remaining = activeChallenge.targetTrades - activeChallenge.progress
+
+  const handleLogSuccess = () => {
+    const wasLastTrade = activeChallenge.progress + 1 >= activeChallenge.targetTrades
+    logTrade(true)
+    if (wasLastTrade) awardXP(activeChallenge.xpReward, activeChallenge.title)
+  }
+
+  return (
+    <Card className="border-[#FF444F]/25 bg-[#FF444F]/[0.04] mx-4 lg:mx-6">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">{activeChallenge.icon}</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#FF444F]">Active Challenge</span>
+                {activeChallenge.streak >= 2 && (
+                  <span className="flex items-center gap-0.5 text-amber-400 text-[10px] font-semibold">
+                    <IconFlame className="size-3" />{activeChallenge.streak} streak
+                  </span>
+                )}
+              </div>
+              <CardTitle className="text-base">{activeChallenge.title}</CardTitle>
+            </div>
+          </div>
+          <Link href="/dashboard/challenges">
+            <Button size="sm" variant="ghost" className="text-xs text-muted-foreground gap-1 h-7">
+              Details <IconChevronRight className="size-3" />
+            </Button>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">{activeChallenge.requirement}</p>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">{activeChallenge.progress}/{activeChallenge.targetTrades} trades</span>
+            <span className="text-muted-foreground">{progressPct}% — {remaining} remaining</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#FF444F] transition-all duration-700"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs gap-1.5"
+            onClick={handleLogSuccess}
+          >
+            <IconCircleCheck className="size-3" /> ✅ Followed Rule
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 border-white/10 text-xs gap-1.5"
+            onClick={() => logTrade(false)}
+          >
+            ❌ Broke Rule
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+*/
+
 export default function AICoachDashboard() {
   const { showDemoData } = useDemoMode()
 
+  const [profile, setProfile] = React.useState<StoredProfile | null>(null)
   const [trades, setTrades] = React.useState<Trade[]>([])
   const [stats, setStats] = React.useState<Stats>({ wins: 0, losses: 0, totalPnl: 0, winRate: 0, streak: 0, totalTrades: 0 })
   const [pnlOverTime, setPnlOverTime] = React.useState<{ time: string; pnl: number }[]>([])
@@ -146,6 +289,7 @@ export default function AICoachDashboard() {
 
   React.useEffect(() => {
     setTokenInput(getDerivToken() || '')
+    setProfile(getProfile())
   }, [])
 
   const saveToken = React.useCallback(() => {
@@ -184,16 +328,17 @@ export default function AICoachDashboard() {
     }
   }, [showDemoData])
 
-  // Fetch AI analysis
+  // Fetch AI analysis — includes profile context for personalized coaching
   const fetchAIAnalysis = React.useCallback(async (tradeData: Trade[], statsData: Stats) => {
     if (showDemoData) return
     if (!tradeData || tradeData.length === 0) return
     setLoadingAI(true)
     try {
+      const currentProfile = getProfile()
       const res = await fetch('/api/coach/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: tradeData, stats: statsData }),
+        body: JSON.stringify({ trades: tradeData, stats: statsData, profile: currentProfile }),
       })
       const data = await res.json()
       setAiAnalysis(data)
@@ -711,6 +856,47 @@ export default function AICoachDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Active Challenge Widget - DISABLED: Challenges concept removed */}
+        {/* <ActiveChallengeWidget /> */}
+
+        {/* AI-Recommended Quests — bridges Coach to Education */}
+        {(aiAnalysis || profile) && (() => {
+          const questIds = getRecommendedQuestIds(profile, aiAnalysis)
+          const recommendedQuests = questIds.map(id => QUEST_CATALOG.find(q => q.id === id)).filter(Boolean)
+          if (!recommendedQuests.length) return null
+          return (
+            <Card className="border-white/10 mx-4 lg:mx-6">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <IconTarget className="size-4 text-[#FF444F]" />
+                  AI Recommends
+                </CardTitle>
+                <CardDescription>
+                  {profile?.primary_challenge
+                    ? `Based on your primary challenge "${profile.primary_challenge}" and trading behavior`
+                    : 'Quests selected based on your behavioral patterns'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {recommendedQuests.map((quest) => quest && (
+                    <Link key={quest.id} href={`/dashboard/quests/${quest.id}`} className="block group">
+                      <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 hover:border-[#FF444F]/40 hover:bg-[#FF444F]/5 transition-all">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="text-xs font-semibold text-[#FF444F] uppercase tracking-wider">Quest {quest.id}</span>
+                          <Badge variant="outline" className="text-[9px] border-white/20 text-muted-foreground capitalize">{quest.difficulty}</Badge>
+                        </div>
+                        <p className="text-sm font-medium text-foreground/90 leading-tight">{quest.title}</p>
+                        <p className="text-xs text-[#FF444F]/70 mt-2 group-hover:text-[#FF444F] transition-colors">Start Quest →</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })()}
 
         {/* Honest data note: what we have and what AI can/cannot do */}
         {!showDemoData && trades.length > 0 && (

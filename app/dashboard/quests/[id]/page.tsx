@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, CheckCircle2, X, Loader2, MessageSquare } from "lucide-react";
+import { ChevronRight, CheckCircle2, X, Loader2, MessageSquare, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useGamification } from "@/lib/gamification-context";
+import { getProfile } from "@/lib/user-profile";
 
 interface Answer {
     id: string;
@@ -20,14 +22,6 @@ interface Page {
     title: string;
     story: string;
     answers: Answer[];
-}
-
-interface UserProfile {
-    tradingStyle?: string;
-    riskTolerance?: string;
-    instruments?: string[];
-    learningStyle?: string;
-    learningGoals?: string;
 }
 
 interface ChatMessage {
@@ -75,6 +69,8 @@ export default function QuestDetailPage() {
 
     const quest = quests.find((q) => q.id === questId);
 
+    const { completeQuest, isQuestCompleted } = useGamification();
+
     const [pages, setPages] = useState<Page[]>([]);
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
@@ -87,18 +83,11 @@ export default function QuestDetailPage() {
     const [isChatLoading, setIsChatLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    const [userProfile] = useState<UserProfile>({
-        tradingStyle: "position",
-        riskTolerance: "moderate",
-        instruments: ["EUR/USD", "BTC/USD", "Gold", "S&P 500"],
-        learningStyle: "analytical",
-        learningGoals: "Improve entry timing and reduce emotional trading",
-    });
+    // Load real profile from localStorage (set during onboarding)
+    const userProfile = getProfile();
+    const isCompleted = isQuestCompleted(questId);
 
-    const [completedQuestIds, setCompletedQuestIds] = useState<Set<number>>(new Set([3]));
-    const isCompleted = completedQuestIds.has(questId);
-
-    // Initialize questCompleted based on whether this quest is already completed
+    // Initialize questCompleted based on persisted state
     useEffect(() => {
         if (isCompleted) {
             setQuestCompleted(true);
@@ -157,7 +146,7 @@ export default function QuestDetailPage() {
         };
 
         generateQuestions();
-    }, [questId, quest?.title, userProfile, pages.length, isCompleted]);
+    }, [questId, quest?.title, pages.length, isCompleted]); // userProfile is derived from localStorage, not state
 
     const currentPage = pages[currentPageIndex];
     const selectedAnswerId = currentPage?.id ? selectedAnswers[currentPage.id] : null;
@@ -196,7 +185,8 @@ export default function QuestDetailPage() {
             setShowResults(false);
         } else if (allAnswersCorrect) {
             setQuestCompleted(true);
-            setCompletedQuestIds((prev) => new Set(prev).add(questId));
+            // Award XP and persist completion via gamification context
+            completeQuest(questId, quest?.title);
         }
     };
 
@@ -280,7 +270,12 @@ export default function QuestDetailPage() {
                 {/* Header */}
                 <div className="flex items-center justify-between flex-shrink-0 pb-4 border-b border-border/50">
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Quest Completed! 🎉</h1>
+                        <div className="flex items-center gap-2 mb-1">
+                            <h1 className="text-2xl font-bold text-foreground">Quest Completed!</h1>
+                            <Badge variant="outline" className="border-amber-500/50 text-amber-400 bg-amber-500/10 text-sm font-bold">
+                                <Star className="h-3 w-3 mr-1" />+100 XP
+                            </Badge>
+                        </div>
                         <p className="text-sm text-muted-foreground">{quest.title}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => router.back()}>

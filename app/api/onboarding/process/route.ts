@@ -1,96 +1,75 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from "next/server";
+import { generateObject } from 'ai'
+import { z } from 'zod'
+import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+import { getAIModel } from '@/lib/ai-provider'
+
+const AnalysisSchema = z.object({
+  preferred_product: z.string().describe('Trading products/markets the user prefers'),
+  trading_timeline: z.string().describe('Trading timeframe (scalping/day trading/swing/investing)'),
+  experience_level: z.string().describe('Beginner/Intermediate/Advanced'),
+  primary_objective: z.string().describe('Main trading goal (income/wealth/recreation)'),
+  primary_challenge: z.string().describe('Biggest trading challenge (discipline/analysis/execution/risk)'),
+  coach_profile_summary: z.string().describe('2-3 sentence summary of the trader profile and mindset'),
+  risk_factor: z.string().describe('Primary risk behaviour pattern identified'),
+  recommended_focus: z.string().describe('Top recommended area to focus on for improvement'),
+})
+
+const MOCK_ANALYSIS = {
+  preferred_product: 'Forex, Crypto',
+  trading_timeline: 'Day Trading',
+  experience_level: 'Intermediate',
+  primary_objective: 'Income',
+  primary_challenge: 'Discipline',
+  coach_profile_summary: 'Shows potential but lacks consistency. Would benefit from a structured rule-based approach.',
+  risk_factor: 'Emotional Execution',
+  recommended_focus: 'Systematic Rule Implementation',
+}
 
 export async function POST(req: Request) {
-  // 1. SAFE LOGGING: Check environment variables immediately
-  console.log("🔍 [API] Starting Onboarding Process...");
-  console.log("   - Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✅ Loaded" : "❌ MISSING");
-  console.log("   - Supabase Key:", process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ? "✅ Loaded" : "❌ MISSING");
-  console.log("   - Gemini Key:", process.env.GEMINI_API_KEY ? "✅ Loaded" : "❌ MISSING");
+  console.log('[onboarding] Starting process...')
 
   try {
-    // 2. Parse Request Body
-    let body;
-    try {
-        body = await req.json();
-    } catch (e) {
-        throw new Error("Invalid JSON in request body");
-    }
-    const { responses } = body;
+    const body = await req.json().catch(() => { throw new Error('Invalid JSON in request body') })
+    const { responses } = body
 
-    // 3. Run Gemini Analysis
-    const apiKey = process.env.GEMINI_API_KEY;
-    let analysis;
+    // AI Analysis
+    let analysis: typeof MOCK_ANALYSIS
 
-    if (!apiKey) {
-      console.warn("⚠️ [API] No Gemini Key found. Using Mock Data.");
-      analysis = {
-        preferred_product: "Forex, Crypto",
-        trading_timeline: "Day Trading",
-        experience_level: "Intermediate",
-        primary_objective: "Income",
-        primary_challenge: "Discipline",
-        coach_profile_summary: "Shows potential but lacks consistency.",
-        risk_factor: "Emotional Execution",
-        recommended_focus: "Systematic Rule Implementation"
-      };
+    const aiModel = getAIModel()
+    if (!aiModel) {
+      console.warn('[onboarding] No AI key configured — using mock analysis')
+      analysis = MOCK_ANALYSIS
     } else {
-      console.log("🤖 [API] Calling Gemini...");
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Updated to 2.0-flash which is more stable
-      
-      const prompt = `
-        Act as a Trading Coach. Extract data from these responses: ${JSON.stringify(responses)}
-        Return JSON only:
-        {
-          "preferred_product": "string",
-          "trading_timeline": "string",
-          "experience_level": "string",
-          "primary_objective": "string",
-          "primary_challenge": "string",
-          "coach_profile_summary": "string",
-          "risk_factor": "string",
-          "recommended_focus": "string"
-        }
-      `;
-      
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().replace(/```json|```/g, "").trim();
-      
-      try {
-        analysis = JSON.parse(text);
-      } catch (e) {
-        console.error("❌ [API] Gemini returned invalid JSON:", text);
-        throw new Error("Failed to parse AI response");
-      }
+      console.log(`[onboarding] Calling AI (${aiModel.provider})...`)
+      const { object } = await generateObject({
+        model: aiModel.model,
+        schema: AnalysisSchema,
+        prompt: `You are a professional trading coach. Analyze these onboarding responses and extract a structured profile.
+
+Onboarding responses: ${JSON.stringify(responses)}
+
+Extract accurate information from the answers. Be specific and insightful in the coach_profile_summary. Identify the real primary challenge based on their answers about losses, emotional reactions, and trading philosophy.`,
+      })
+      analysis = object
     }
 
-    // 4. Connect to Supabase
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    
+    // Supabase insert
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Supabase Environment Variables are missing. Check .env.local");
+      throw new Error('Supabase environment variables are missing')
     }
-    
-    // Create client safely
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 5. Insert into Database
-    console.log("💾 [API] Inserting into Supabase...");
-    
-    // Attempt to get user (optional, don't crash if fails)
-    let userId = null;
-    try {
-        // Just leave null for now to simplify debugging
-    } catch (e) {}
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
+    console.log('[onboarding] Inserting into Supabase...')
     const { data, error } = await supabase
       .from('user_profiles')
-      .insert([{ 
-        user_id: userId,
-        full_name: responses.name || "Anonymous Trader",
+      .insert([{
+        user_id: null,
+        full_name: responses.name || 'Anonymous Trader',
         preferred_product: analysis.preferred_product,
         trading_timeline: analysis.trading_timeline,
         experience_level: analysis.experience_level,
@@ -99,31 +78,22 @@ export async function POST(req: Request) {
         coach_profile_summary: analysis.coach_profile_summary,
         risk_factor: analysis.risk_factor,
         recommended_focus: analysis.recommended_focus,
-        raw_onboarding_responses: responses
+        raw_onboarding_responses: responses,
       }])
       .select()
-      .single();
+      .single()
 
     if (error) {
-      console.error("❌ [API] Supabase Insert Error:", error);
-      // Return 200 with success:false so frontend can handle it gracefully instead of crashing
-      return NextResponse.json({ success: false, error: error.message, details: error });
+      console.error('[onboarding] Supabase error:', error)
+      return NextResponse.json({ success: false, error: error.message, details: error })
     }
 
-    console.log("✅ [API] Success! DB ID:", data.id);
-    return NextResponse.json({ 
-        success: true, 
-        analysis, 
-        dbId: data.id 
-    });
+    console.log('[onboarding] Success! DB ID:', data.id)
+    return NextResponse.json({ success: true, analysis, dbId: data.id })
 
-  } catch (error: any) {
-    console.error("🔥 [API] CRITICAL SERVER CRASH:", error);
-    // Return 500 but with JSON body so frontend 'fetch' doesn't die silently
-    return NextResponse.json({ 
-        success: false, 
-        error: error.message || "Unknown Server Error",
-        stack: error.stack 
-    }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown server error'
+    console.error('[onboarding] Critical error:', message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
